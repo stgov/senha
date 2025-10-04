@@ -1,0 +1,7 @@
+# Requirements para version con GPU/CUDA
+opencv-contrib-python==4.10.0.84
+mediapipe==0.10.14
+numpy==1.26.4
+
+# Opcional: TensorFlow con GPU para operaciones adicionales
+# tensorflow-gpu==2.15.0

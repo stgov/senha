@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+
+# Modelos de MediaPipe (descargar automáticamente)
+models/
+*.task
+
+# Media generados
+*.mp4
+*.avi
+*.mov
+*.jpg
+*.jpeg
+*.png
+
+# Logs
+*.log
+logs/
+
+# Docker override
+docker-compose.override.yml
+
+# Temporales
+*.tmp
+*.temp
+.cache/
+
+# Test coverage
+.pytest_cache/
+.coverage
+htmlcov/

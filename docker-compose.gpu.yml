@@ -1,0 +1,58 @@
+services:
+  person-tracker-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    container_name: person-tracker-gpu
+    image: person-tracker:gpu
+    
+    # Configuración de red
+    network_mode: host
+    
+    # Variables de entorno
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
+    
+    # Volúmenes
+    volumes:
+      # Montar directorio de modelos (descarga automática)
+      - ./models:/app/models
+      
+      # Montar socket de X11 para GUI
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      
+      # Desarrollo: hot-reload del código
+      - ./person_tracker.py:/app/person_tracker.py:ro
+      - ./model_downloader.py:/app/model_downloader.py:ro
+    
+    # Dispositivos (cámara)
+    devices:
+      - /dev/video0:/dev/video0
+    
+    # Runtime NVIDIA para GPU (requiere nvidia-container-toolkit)
+    runtime: nvidia
+    
+    # Grupos adicionales
+    group_add:
+      - video
+    
+    # Comando por defecto
+    command: python person_tracker.py lite
+    
+    # Política de reinicio
+    restart: unless-stopped
+    
+    # Recursos GPU
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, compute, utility, video]
+        limits:
+          cpus: '4'
+          memory: 4G
