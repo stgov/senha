@@ -32,7 +32,7 @@ Sistema de seguimiento de personas activado por reconocimiento de gestos usando 
 
 ### Local (Alternativo)
 
-- Python 3.10+
+- Python 3.10 o 3.11 (⚠️ NO 3.12: elimina `distutils`)
 - Cámara web
 
 ## 🐳 Inicio Rápido con Docker

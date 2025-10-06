@@ -1,5 +1,6 @@
-# Usar imagen base de Python 3.12 en Debian (CPU)
-FROM python:3.12-slim-bookworm
+# Usar imagen base de Python 3.11 en Debian (CPU)
+# Python 3.12 elimina distutils requerido por mediapipe
+FROM python:3.11-slim-bookworm
 
 # Establecer variables de entorno
 ENV PYTHONUNBUFFERED=1 \
