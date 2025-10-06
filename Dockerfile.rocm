@@ -40,9 +40,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copiar requirements e instalar dependencias de Python
-COPY requirements-gpu.txt .
+COPY requirements-rocm.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements-gpu.txt
+    pip install --no-cache-dir -r requirements-rocm.txt
 
 # Copiar el código de la aplicación
 COPY person_tracker.py .

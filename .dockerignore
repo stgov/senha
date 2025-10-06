@@ -50,7 +50,7 @@ models/
 *.md
 LICENSE
 
-# Docker
+# Docker (no copiar otros Dockerfiles)
 Dockerfile*
 docker-compose*.yml
 .dockerignore

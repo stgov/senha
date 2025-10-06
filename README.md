@@ -156,18 +156,19 @@ python model_downloader.py all
 .
 ├── person_tracker.py           # Script principal
 ├── model_downloader.py         # Descargador automático de modelos
-├── requirements.txt            # Dependencias locales
+├── requirements.txt            # Dependencias locales (CPU)
 ├── requirements-docker.txt     # Dependencias Docker CPU
-├── requirements-gpu.txt        # Dependencias Docker GPU
+├── requirements-gpu.txt        # Dependencias Docker NVIDIA CUDA
+├── requirements-rocm.txt       # Dependencias Docker AMD ROCm
 ├── Dockerfile                  # Imagen Docker CPU
 ├── Dockerfile.gpu              # Imagen Docker NVIDIA CUDA
 ├── Dockerfile.rocm             # Imagen Docker AMD ROCm
-├── docker-compose.yml          # Orquestación (CPU, NVIDIA, AMD)
-├── docker-compose.gpu.yml      # Orquestación NVIDIA (legacy)
+├── docker-compose.yml          # Orquestación unificada (CPU/NVIDIA/AMD)
 ├── .dockerignore               # Exclusiones Docker
 ├── .gitignore                  # Exclusiones Git
 ├── README.md                   # Este archivo
-└── WINDOWS.md                  # Guía para Windows
+├── WINDOWS.md                  # Guía para Windows
+└── ROCM.md                     # Guía para AMD ROCm
 ```
 
 ## 🐛 Solución de Problemas

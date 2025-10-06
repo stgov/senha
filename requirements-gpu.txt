@@ -1,7 +1,13 @@
-# Requirements para version con GPU/CUDA
+# Requirements para version con GPU NVIDIA CUDA
 opencv-contrib-python==4.10.0.84
 mediapipe==0.10.14
 numpy==1.26.4
 
-# Opcional: TensorFlow con GPU para operaciones adicionales
-# tensorflow-gpu==2.15.0
+# TensorFlow con soporte GPU (CUDA 12.x)
+tensorflow[and-cuda]==2.16.2
+
+# Opcional: PyTorch con CUDA
+# torch==2.3.1+cu121
+# torchvision==0.18.1+cu121
+# --extra-index-url https://download.pytorch.org/whl/cu121
+

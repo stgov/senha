@@ -27,12 +27,12 @@ Esta guía te ayudará a configurar tu GPU AMD para usar con el person tracker.
 ### Ubuntu 22.04 / 24.04
 
 ```bash
-# 1. Agregar repositorio de ROCm
+# 1. Agregar repositorio de ROCm 6.1
 wget https://repo.radeon.com/amdgpu-install/6.1/ubuntu/jammy/amdgpu-install_6.1.60100-1_all.deb
 sudo apt install ./amdgpu-install_6.1.60100-1_all.deb
 
 # 2. Instalar ROCm
-sudo amdgpu-install --usecase=rocm
+sudo amdgpu-install --usecase=rocm,rocmdev
 
 # 3. Agregar usuario al grupo render y video
 sudo usermod -aG render $USER

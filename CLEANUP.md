@@ -16,18 +16,25 @@
 
 ### Archivos de configuración
 - `models/.gitkeep` - No necesario con .gitignore
+- `docker-compose.gpu.yml` - Consolidado en docker-compose.yml
 
-## 📦 Archivos Mantenidos
+## 📦 Archivos Mantenidos (17 archivos)
 
 ### Scripts principales
 - `person_tracker.py` - Script principal del proyecto ⭐
 - `model_downloader.py` - Descargador automático de modelos
 
+### Dependencias
+- `requirements.txt` - Dependencias locales (CPU)
+- `requirements-docker.txt` - Dependencias Docker CPU
+- `requirements-gpu.txt` - Dependencias Docker GPU NVIDIA (con TensorFlow CUDA 12)
+- `requirements-rocm.txt` - Dependencias Docker GPU AMD (con TensorFlow ROCm)
+
 ### Configuración Docker
 - `Dockerfile` - Imagen Docker CPU
-- `Dockerfile.gpu` - Imagen Docker GPU  
-- `docker-compose.yml` - Orquestación CPU
-- `docker-compose.gpu.yml` - Orquestación GPU
+- `Dockerfile.gpu` - Imagen Docker GPU NVIDIA (CUDA 12.3.1)
+- `Dockerfile.rocm` - Imagen Docker GPU AMD (ROCm 6.1)
+- `docker-compose.yml` - Orquestación unificada (CPU, NVIDIA, AMD)
 - `requirements-docker.txt` - Dependencias Docker CPU
 - `requirements-gpu.txt` - Dependencias Docker GPU
 
@@ -64,14 +71,14 @@
 senha/
 ├── person_tracker.py           # Script principal
 ├── model_downloader.py         # Descargador de modelos
-├── requirements.txt            # Deps locales
+├── requirements.txt            # Deps locales (CPU)
 ├── requirements-docker.txt     # Deps Docker CPU
-├── requirements-gpu.txt        # Deps Docker GPU
+├── requirements-gpu.txt        # Deps Docker GPU NVIDIA
+├── requirements-rocm.txt       # Deps Docker GPU AMD
 ├── Dockerfile                  # Imagen CPU
 ├── Dockerfile.gpu              # Imagen GPU NVIDIA
 ├── Dockerfile.rocm             # Imagen GPU AMD
 ├── docker-compose.yml          # Compose unificado (CPU/NVIDIA/AMD)
-├── docker-compose.gpu.yml      # Compose GPU NVIDIA (legacy)
 ├── .dockerignore               # Exclusiones Docker
 ├── .gitignore                  # Exclusiones Git
 ├── README.md                   # Documentación

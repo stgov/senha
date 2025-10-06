@@ -1,0 +1,14 @@
+# Requirements para version con GPU AMD ROCm
+opencv-contrib-python==4.10.0.84
+mediapipe==0.10.14
+numpy==1.26.4
+
+# TensorFlow ROCm (AMD GPU)
+tensorflow-rocm==2.15.1
+
+# PyTorch ROCm (viene preinstalado en la imagen base rocm/pytorch)
+# torch==2.1.2+rocm6.0
+# torchvision==0.16.2+rocm6.0
+
+# Dependencias adicionales ROCm
+# rocm-smi-lib>=5.7.0

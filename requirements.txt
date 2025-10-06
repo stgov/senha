@@ -1,42 +1,19 @@
-# Core dependencies (CPU version)
+# Core dependencies para ejecución local (CPU)
 opencv-python==4.10.0.84
 mediapipe==0.10.14
 numpy==1.26.4
 
-# GPU acceleration (CUDA support for OpenCV)
-# Uncomment for GPU support:
-# opencv-contrib-python==4.10.0.84
+# Optional: Development tools
+ipython>=8.12.0
+jupyter>=1.0.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+scikit-learn>=1.3.0
+scipy>=1.11.0
+pillow>=10.0.0
+requests>=2.31.0
 
-# Optional: Development tools (not needed for Docker)
-ipython
-jupyter
-pandas
-matplotlib
-seaborn
-scikit-learn
-scipy
-tensorflow
-keras
-
-pillow
-opencv-python
-requests
-
-jupyter-notebook
-
-
-matplotlib-inline
-ipykernel
-jupyter-client
-jupyter-core
-jupyter-console
-jupyter-lab
-jupyter-lab-core
-jupyter-lab-extension
-jupyter-lab-extension-manager
-jupyter-lab-extension-manager-core
-jupyter-lab-extension-manager-core-core
-jupyter-lab-extension-manager-core-core-core
 
 
 
