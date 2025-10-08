@@ -4,6 +4,13 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from typing import Tuple
+from pathlib import Path
+import sys
+import os
+
+# Agregar el directorio scripts al path para importar ModelDownloader
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'scripts'))
+from model_downloader import ModelDownloader
 
 
 class ModelManager:
@@ -19,11 +26,28 @@ class ModelManager:
         self.max_num_hands = max_num_hands
         self.min_confidence = min_confidence
         
+        # Verificar y descargar modelos automáticamente
+        self._ensure_models_available()
+        
         self.gesture_model_path = "models/gesture_recognizer.task"
         self.pose_model_path = self._get_pose_model_path(pose_model)
         
         self.gesture_recognizer = self._create_gesture_recognizer()
         self.pose_landmarker = self._create_pose_landmarker()
+    
+    def _ensure_models_available(self) -> None:
+        """Verificar y descargar modelos automáticamente si no existen."""
+        print("🔍 Verificando modelos de MediaPipe...")
+        
+        # Crear directorio models si no existe
+        models_dir = Path("models")
+        models_dir.mkdir(exist_ok=True)
+        
+        # Inicializar el descargador
+        downloader = ModelDownloader(models_dir="models")
+        
+        # Descargar solo los modelos necesarios
+        downloader.download_required(self.pose_model)
     
     def _get_pose_model_path(self, pose_model: str) -> str:
         if pose_model == "lite":

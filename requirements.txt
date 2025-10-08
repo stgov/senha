@@ -1,7 +1,7 @@
 # Core dependencies
-opencv-python==4.10.0.84
-mediapipe==0.10.14
-numpy==1.26.4
+opencv-python
+mediapipe
+numpy
 
 # Re-ID and vector database
 chromadb
