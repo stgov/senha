@@ -1,220 +1,98 @@
-# Person Tracker with Gesture Recognition
+﻿# Person Tracker with Gesture Recognition
 
 Sistema de seguimiento de personas activado por reconocimiento de gestos usando MediaPipe.
 
-## 🚀 Características
+## Caracteristicas
 
-- Detección de gesto "Closed Fist" para activar seguimiento
-- Seguimiento específico de la persona que realiza el gesto
-- Procesamiento paralelo de modelos (Gesture Recognizer + Pose Landmarker)
-- Soporte para modelos Lite y Full
-- Descarga automática de modelos
-- Dockerizado con soporte CPU y GPU
+- Deteccion de gesto Closed Fist (puno cerrado)
+- Seguimiento automatico de la persona que hace el gesto
+- Procesamiento en paralelo de modelos de gestos y pose
+- Ejecucion en CPU con Python 3.11
+- Soporte para Docker
 
-## 📋 Requisitos
+## Requisitos
 
-### Docker (Recomendado)
+- Python 3.11 (Python 3.12 no compatible)
+- Webcam
+- Linux/macOS para Docker (Windows usar ejecucion local)
 
-- Docker Engine 20.10+
-- Docker Compose 2.0+
-- Cámara web accesible
+## Instalacion y Uso
 
-### Para GPU (Opcional)
-
-**NVIDIA CUDA:**
-- NVIDIA GPU con soporte CUDA
-- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
-
-**AMD ROCm:**
-- AMD GPU con soporte ROCm (RX 5000+, RX 6000+, RX 7000+)
-- [ROCm instalado](https://rocm.docs.amd.com/en/latest/deploy/linux/quick_start.html)
-- Kernel Linux 5.15+
-
-### Local (Alternativo)
-
-- Python 3.10 o 3.11 (⚠️ NO 3.12: elimina `distutils`)
-- Cámara web
-
-## 🐳 Inicio Rápido con Docker
-
-### Linux/macOS
+### Opcion 1: Ejecucion Local
 
 ```bash
-# 1. Clonar repositorio
+# Clonar repositorio
 git clone <repo-url>
 cd senha
 
-# 2. Permitir acceso a X11
-xhost +local:docker
-
-# 3. Construir y ejecutar
-docker-compose up person-tracker
-
-# 4. Con modelo Full
-docker-compose run --rm person-tracker python person_tracker.py full
-```
-
-### Windows con WSL2
-
-```powershell
-# 1. Abrir WSL2
-wsl
-
-# 2. Configurar display
-export DISPLAY=$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}'):0
-
-# 3. Permitir X11
-xhost +local:docker
-
-# 4. Ejecutar
-docker-compose up person-tracker
-```
-
-Ver [WINDOWS.md](WINDOWS.md) para más detalles sobre configuración en Windows.
-
-Ver [ROCM.md](ROCM.md) para guía completa de configuración AMD ROCm.
-
-## 🎮 GPU Acelerado
-
-### NVIDIA CUDA
-
-```bash
-# 1. Verificar GPU disponible
-docker run --rm --gpus all nvidia/cuda:12.3.1-base-ubuntu22.04 nvidia-smi
-
-# 2. Construir imagen GPU
-docker-compose -f docker-compose.gpu.yml build
-
-# 3. Ejecutar con GPU
-docker-compose -f docker-compose.gpu.yml up person-tracker-gpu
-```
-
-### AMD ROCm
-
-```bash
-# 1. Verificar GPU AMD disponible
-docker run --rm --device=/dev/kfd --device=/dev/dri rocm/pytorch:latest rocm-smi
-
-# 2. Construir imagen ROCm
-docker-compose build person-tracker-rocm
-
-# 3. Ejecutar con GPU AMD
-docker-compose up person-tracker-rocm
-
-# 4. Con modelo Full
-docker-compose run --rm person-tracker-rocm python person_tracker.py full
-```
-
-**GPUs AMD soportadas:**
-- RX 5000 series (RDNA 1)
-- RX 6000 series (RDNA 2)
-- RX 7000 series (RDNA 3)
-- Radeon Pro series
-- Instinct series
-
-## 💻 Ejecución Local (Sin Docker)
-
-```bash
-# 1. Crear entorno virtual
-python -m venv .venv
-source .venv/bin/activate  # En Windows: .venv\Scripts\activate
-
-# 2. Instalar dependencias
+# Instalar dependencias
 pip install -r requirements.txt
 
-# 3. Ejecutar (descarga automática de modelos)
+# Ejecutar (modelos se descargan automaticamente)
 python person_tracker.py lite
+python person_tracker.py full
 ```
 
-## 🎯 Uso
-
-1. Ejecuta la aplicación
-2. Colócate frente a la cámara
-3. Haz el gesto de puño cerrado ("Closed Fist")
-4. El sistema identificará tu posición y activará el seguimiento
-5. Solo tú serás rastreado, otras personas en el frame serán ignoradas
-
-### Controles
-
-- **q**: Salir de la aplicación
-- **r**: Resetear seguimiento (volver a modo detección)
-- **t**: Alternar visualización de manos
-
-## 📦 Modelos
-
-Los modelos se descargan automáticamente la primera vez que ejecutas la aplicación.
-
-Para descargar manualmente:
+### Opcion 2: Docker (Linux/macOS)
 
 ```bash
-python model_downloader.py all
-```
+# Construir imagen
+docker compose build
 
-## 🛠️ Estructura del Proyecto
-
-```
-.
-├── person_tracker.py           # Script principal
-├── model_downloader.py         # Descargador automático de modelos
-├── requirements.txt            # Dependencias locales (CPU)
-├── requirements-docker.txt     # Dependencias Docker CPU
-├── requirements-gpu.txt        # Dependencias Docker NVIDIA CUDA
-├── requirements-rocm.txt       # Dependencias Docker AMD ROCm
-├── Dockerfile                  # Imagen Docker CPU
-├── Dockerfile.gpu              # Imagen Docker NVIDIA CUDA
-├── Dockerfile.rocm             # Imagen Docker AMD ROCm
-├── docker-compose.yml          # Orquestación unificada (CPU/NVIDIA/AMD)
-├── .dockerignore               # Exclusiones Docker
-├── .gitignore                  # Exclusiones Git
-├── README.md                   # Este archivo
-├── WINDOWS.md                  # Guía para Windows
-└── ROCM.md                     # Guía para AMD ROCm
-```
-
-## 🐛 Solución de Problemas
-
-### Docker: "Can't open display"
-
-```bash
-# Linux/macOS
+# Permitir acceso X11
 xhost +local:docker
 
-# WSL2
-export DISPLAY=$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}'):0
+# Ejecutar
+docker compose up
+
+# Limpiar permisos X11
+xhost -local:docker
 ```
 
-### Docker: "No se pudo abrir la cámara"
+## Estructura
 
-Asegúrate de que el dispositivo esté montado correctamente:
-
-```bash
-# Verificar cámara
-ls -l /dev/video*
-
-# Agregar usuario al grupo video
-sudo usermod -aG video $USER
+```
+senha/
+ person_tracker.py
+ model_downloader.py
+ requirements.txt
+ Dockerfile
+ docker-compose.yml
+ .dockerignore
+ .gitignore
+ README.md
 ```
 
-### Local: "No se pudo abrir la cámara"
+## Uso
 
-Cierra otras aplicaciones que puedan estar usando la cámara (Teams, Zoom, Skype).
+1. Ejecutar el script
+2. Aparecer frente a la camara
+3. Hacer gesto Closed Fist (puno cerrado)
+4. El sistema comenzara a rastrear tus movimientos
+5. Presionar q para salir
 
-## 📊 Rendimiento
+## Tecnologias
 
-| Configuración | FPS Estimado | Latencia | Uso |
-|---------------|--------------|----------|-----|
-| CPU + Lite    | 15-20 fps    | ~50ms    | General |
-| CPU + Full    | 8-12 fps     | ~100ms   | Mayor precisión |
-| NVIDIA + Lite | 50-60 fps    | ~15ms    | Tiempo real |
-| NVIDIA + Full | 30-40 fps    | ~30ms    | Máxima precisión |
-| AMD + Lite    | 45-55 fps    | ~18ms    | Tiempo real |
-| AMD + Full    | 25-35 fps    | ~35ms    | Alta precisión |
+- MediaPipe 0.10.14 - Deteccion de gestos y pose
+- OpenCV 4.10 - Procesamiento de video
+- Python 3.11 - Runtime
+- NumPy 1.26 - Operaciones numericas
 
-**Nota:** Rendimiento estimado basado en:
-- CPU: Intel i7/Ryzen 7
-- NVIDIA: RTX 3060 o superior
-- AMD: RX 6600 XT o superior
+## Modelos
 
-## 📝 Licencia
+Dos modelos de pose disponibles:
+
+- lite (default): Mas rapido, menos preciso
+- full: Mas preciso, mas lento
+
+Los modelos se descargan automaticamente en la primera ejecucion.
+
+## Notas
+
+- Python 3.12 no compatible (elimina distutils requerido por MediaPipe)
+- En Windows, usar ejecucion local (Docker Desktop no soporta camara nativamente)
+- Requiere buena iluminacion para deteccion optima de gestos
+
+## Licencia
 
 MIT

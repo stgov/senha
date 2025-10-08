@@ -1,13 +1,10 @@
 services:
-  # ======================================
-  # Versión CPU (por defecto)
-  # ======================================
   person-tracker:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: person-tracker-cpu
-    image: person-tracker:cpu
+    container_name: person-tracker
+    image: person-tracker:latest
     
     network_mode: host
     
@@ -35,102 +32,3 @@ services:
         limits:
           cpus: '2'
           memory: 2G
-
-  # ======================================
-  # Versión GPU NVIDIA (CUDA)
-  # ======================================
-  person-tracker-gpu:
-    build:
-      context: .
-      dockerfile: Dockerfile.gpu
-    container_name: person-tracker-gpu
-    image: person-tracker:gpu
-    
-    network_mode: host
-    runtime: nvidia
-    
-    environment:
-      - DISPLAY=${DISPLAY:-:0}
-      - QT_X11_NO_MITSHM=1
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
-    
-    volumes:
-      - ./models:/app/models
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - ./person_tracker.py:/app/person_tracker.py:ro
-      - ./model_downloader.py:/app/model_downloader.py:ro
-    
-    devices:
-      - /dev/video0:/dev/video0
-    
-    group_add:
-      - video
-    
-    command: python person_tracker.py lite
-    restart: unless-stopped
-    
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu, compute, utility, video]
-        limits:
-          cpus: '4'
-          memory: 4G
-
-  # ======================================
-  # Versión GPU AMD (ROCm)
-  # ======================================
-  person-tracker-rocm:
-    build:
-      context: .
-      dockerfile: Dockerfile.rocm
-    container_name: person-tracker-rocm
-    image: person-tracker:rocm
-    
-    network_mode: host
-    
-    environment:
-      - DISPLAY=${DISPLAY:-:0}
-      - QT_X11_NO_MITSHM=1
-      - HSA_OVERRIDE_GFX_VERSION=10.3.0
-      - ROCM_PATH=/opt/rocm
-      - HIP_VISIBLE_DEVICES=0
-    
-    volumes:
-      - ./models:/app/models
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - ./person_tracker.py:/app/person_tracker.py:ro
-      - ./model_downloader.py:/app/model_downloader.py:ro
-    
-    devices:
-      - /dev/video0:/dev/video0
-      - /dev/kfd:/dev/kfd
-      - /dev/dri:/dev/dri
-    
-    group_add:
-      - video
-      - render
-    
-    command: python person_tracker.py lite
-    restart: unless-stopped
-    
-    deploy:
-      resources:
-        limits:
-          cpus: '4'
-          memory: 4G
-
-  # ======================================
-  # Modo desarrollo
-  # ======================================
-  person-tracker-dev:
-    extends:
-      service: person-tracker
-    container_name: person-tracker-dev
-    command: python person_tracker.py full
-    profiles:
-      - dev

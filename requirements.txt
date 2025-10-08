@@ -1,18 +1,7 @@
-# Core dependencies para ejecución local (CPU)
+# Core dependencies
 opencv-python==4.10.0.84
 mediapipe==0.10.14
 numpy==1.26.4
-
-# Optional: Development tools
-ipython>=8.12.0
-jupyter>=1.0.0
-pandas>=2.0.0
-matplotlib>=3.7.0
-seaborn>=0.12.0
-scikit-learn>=1.3.0
-scipy>=1.11.0
-pillow>=10.0.0
-requests>=2.31.0
 
 
 

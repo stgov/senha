@@ -1,5 +1,4 @@
-# Usar imagen base de Python 3.11 en Debian (CPU)
-# Python 3.12 elimina distutils requerido por mediapipe
+# Python 3.11 (3.12 elimina distutils requerido por mediapipe)
 FROM python:3.11-slim-bookworm
 
 # Establecer variables de entorno
@@ -29,8 +28,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copiar requirements y instalar dependencias de Python
-COPY requirements-docker.txt .
-RUN pip install --no-cache-dir -r requirements-docker.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar el código de la aplicación
 COPY person_tracker.py .
