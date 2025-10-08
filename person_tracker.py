@@ -2,9 +2,11 @@ import cv2
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-from typing import List, Optional, Sequence, Set, Tuple
+import numpy as np
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from scripts import ModelDownloader
+from src.core.person_reid import PersonReID
 
 
 class PersonTracker:
@@ -46,6 +48,15 @@ class PersonTracker:
             0.3  # Factor de interpolación (0-1, menor = más suave)
         )
         self.previous_bboxes = {}  # Diccionario para almacenar bboxes previas por persona
+
+        # Sistema de Re-Identificación (Re-ID)
+        self.reid_system = PersonReID(
+            similarity_threshold=0.75,
+            max_absent_frames=300,  # ~10 segundos a 30fps
+        )
+        
+        # Mapeo de índices de frame actual a IDs persistentes
+        self.frame_idx_to_person_id: Dict[int, str] = {}
 
         # Inicializar ambos modelos
         self.gesture_recognizer = self.create_gesture_recognizer()
@@ -344,12 +355,16 @@ class PersonTracker:
         pose_result,
         pose_bboxes: Sequence[Optional[Tuple[int, int, int, int]]],
         highlight_indices: Optional[Set[int]] = None,
+        person_ids: Optional[Dict[int, str]] = None,
+        marked_ids: Optional[Set[str]] = None,
     ):
         """Dibujar landmarks de pose para todas las personas detectadas."""
         annotated_frame = frame.copy()
         h, w, _ = frame.shape
 
         highlight_indices = highlight_indices or set()
+        person_ids = person_ids or {}
+        marked_ids = marked_ids or set()
 
         if pose_result.pose_landmarks:
             # Dibujar todas las poses detectadas
@@ -378,22 +393,44 @@ class PersonTracker:
                     continue
 
                 x_min, y_min, x_max, y_max = bbox
-                color = (0, 0, 255) if idx in highlight_indices else (0, 255, 0)
+                
+                # Obtener ID de persona (si existe)
+                person_id = person_ids.get(idx)
+                is_marked = person_id in marked_ids if person_id else False
+                
+                # Color: rojo si está marcada permanentemente, 
+                # naranja si tiene Closed_Fist actual, verde normal
+                if is_marked:
+                    color = (0, 0, 255)  # Rojo permanente
+                elif idx in highlight_indices:
+                    color = (0, 165, 255)  # Naranja (gesto activo)
+                else:
+                    color = (0, 255, 0)  # Verde normal
 
                 cv2.rectangle(
                     annotated_frame,
                     (x_min, y_min),
                     (x_max, y_max),
                     color,
-                    2,
+                    3 if is_marked else 2,
                 )
 
                 cx, cy = self.calculate_bbox_centroid(x_min, y_min, x_max, y_max)
-                cv2.circle(annotated_frame, (cx, cy), 5, color, -1)
+                cv2.circle(annotated_frame, (cx, cy), 6 if is_marked else 5, color, -1)
 
-                label = f"Person {idx + 1}"
-                if idx in highlight_indices:
-                    label += " - Closed Fist"
+                # Label con ID persistente
+                label_parts = []
+                if person_id:
+                    label_parts.append(person_id)
+                else:
+                    label_parts.append(f"Detecting...")
+                
+                if is_marked:
+                    label_parts.append("★ MARKED")
+                elif idx in highlight_indices:
+                    label_parts.append("Closed Fist")
+                
+                label = " - ".join(label_parts)
 
                 cv2.putText(
                     annotated_frame,
