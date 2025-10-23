@@ -2,4 +2,4 @@
 
 from .bbox_smoother import BBoxSmoother
 
-__all__ = ['BBoxSmoother']
+__all__ = ["BBoxSmoother"]

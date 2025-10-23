@@ -13,3 +13,8 @@ supervision
 scikit-image
 
 ultralytics
+
+pre-commit
+black
+flake8
+isort

@@ -4,12 +4,14 @@ Clases de datos para el sistema de tracking.
 
 from dataclasses import dataclass, field
 from typing import Optional
+
 import numpy as np
 
 
 @dataclass
 class PersonRecord:
     """Registro de una persona detectada."""
+
     person_id: str
     marked: bool = False
     smoother_idx: Optional[int] = None

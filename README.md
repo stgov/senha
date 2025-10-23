@@ -118,7 +118,7 @@ senha-1/
 1. **Detección**: MediaPipe detecta personas en el frame
 2. **Extracción**: Se genera un embedding visual de cada persona
 3. **Búsqueda**: Se busca en la base de datos vectorial por similitud
-4. **Match/Nuevo**: 
+4. **Match/Nuevo**:
    - Si similitud > 75%: Se re-identifica como persona existente
    - Si similitud < 75%: Se crea nueva entrada con ID único
 

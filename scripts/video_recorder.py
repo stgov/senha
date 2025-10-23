@@ -2,14 +2,16 @@
 Script para grabar video con sistema de detección Re-ID
 Graba el output con todas las detecciones en media/prototipo.mp4
 """
-import cv2
-import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
-import numpy as np
-from typing import Dict, List, Optional, Set, Tuple
+
 import os
 from datetime import datetime
+from typing import Dict, List, Optional, Set, Tuple
+
+import cv2
+import mediapipe as mp
+import numpy as np
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
 
 from scripts import ModelDownloader
 from src.core.person_reid import PersonReID
@@ -66,7 +68,7 @@ class VideoRecorder:
             similarity_threshold=0.85,
             max_absent_frames=300,  # ~10 segundos a 30fps
         )
-        
+
         # Mapeo de índices de frame actual a IDs persistentes
         self.frame_idx_to_person_id: Dict[int, str] = {}
 
@@ -80,12 +82,15 @@ class VideoRecorder:
         self.mp_pose = mp.solutions.pose
 
         # Crear directorio de salida si no existe
-        os.makedirs(os.path.dirname(self.output_path) if os.path.dirname(self.output_path) else ".", exist_ok=True)
-        
+        os.makedirs(
+            os.path.dirname(self.output_path) if os.path.dirname(self.output_path) else ".",
+            exist_ok=True,
+        )
+
         # Crear directorio de imágenes si no existe
         self.images_dir = "images"
         os.makedirs(self.images_dir, exist_ok=True)
-        
+
         # Contador para capturas automáticas
         self.capture_counter = 0
         self.last_captured_persons = set()  # Para detectar nuevas personas
@@ -119,10 +124,10 @@ class VideoRecorder:
         """Procesar frame con ambos modelos en paralelo"""
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-        
+
         gesture_result = self.gesture_recognizer.recognize(mp_image)
         pose_result = self.pose_landmarker.detect(mp_image)
-        
+
         return gesture_result, pose_result
 
     def calculate_bbox_centroid(self, x_min, y_min, x_max, y_max):
@@ -175,14 +180,10 @@ class VideoRecorder:
 
         for idx, pose_landmarks in enumerate(pose_result.pose_landmarks):
             x_coords = [
-                int(landmark.x * w)
-                for landmark in pose_landmarks
-                if landmark.visibility > 0.5
+                int(landmark.x * w) for landmark in pose_landmarks if landmark.visibility > 0.5
             ]
             y_coords = [
-                int(landmark.y * h)
-                for landmark in pose_landmarks
-                if landmark.visibility > 0.5
+                int(landmark.y * h) for landmark in pose_landmarks if landmark.visibility > 0.5
             ]
 
             if not x_coords or not y_coords:
@@ -196,14 +197,14 @@ class VideoRecorder:
             y_max_raw = min(h, max(y_coords) + padding)
 
             raw_bbox = (x_min_raw, y_min_raw, x_max_raw, y_max_raw)
-            
+
             # Extraer crop de la persona
             crop = frame[y_min_raw:y_max_raw, x_min_raw:x_max_raw]
-            
+
             if crop.size == 0:
                 results.append(None)
                 continue
-                
+
             results.append((raw_bbox, crop))
 
         return results
@@ -257,20 +258,24 @@ class VideoRecorder:
         ax_min, ay_min, ax_max, ay_max = rect_a
         bx_min, by_min, bx_max, by_max = rect_b
 
-        return not (
-            ax_max < bx_min
-            or ax_min > bx_max
-            or ay_max < by_min
-            or ay_min > by_max
-        )
+        return not (ax_max < bx_min or ax_min > bx_max or ay_max < by_min or ay_min > by_max)
 
     def draw_hand_landmarks(self, frame, gesture_result):
         """Dibujar landmarks de mano y gestos detectados"""
         annotated_frame = frame.copy()
         colors = [
-            (255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0),
-            (255, 0, 255), (0, 255, 255), (128, 0, 255), (255, 128, 0),
-            (0, 128, 255), (255, 0, 128), (128, 255, 0), (0, 255, 128),
+            (255, 0, 0),
+            (0, 255, 0),
+            (0, 0, 255),
+            (255, 255, 0),
+            (255, 0, 255),
+            (0, 255, 255),
+            (128, 0, 255),
+            (255, 128, 0),
+            (0, 128, 255),
+            (255, 0, 128),
+            (128, 255, 0),
+            (0, 255, 128),
         ]
 
         if gesture_result.hand_landmarks:
@@ -308,8 +313,13 @@ class VideoRecorder:
                             wrist_y = int(hand_landmarks[0].y * annotated_frame.shape[0])
                             label = f"{top_gesture.category_name} ({top_gesture.score:.2f})"
                             cv2.putText(
-                                annotated_frame, label, (wrist_x, wrist_y - 20),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2,
+                                annotated_frame,
+                                label,
+                                (wrist_x, wrist_y - 20),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.6,
+                                color,
+                                2,
                             )
 
         return annotated_frame
@@ -388,46 +398,48 @@ class VideoRecorder:
 
         return annotated_frame
 
-    def capture_image(self, display_frame: np.ndarray, event_type: str, person_id: str = None) -> str:
+    def capture_image(
+        self, display_frame: np.ndarray, event_type: str, person_id: str = None
+    ) -> str:
         """
         Capturar imagen en momento clave con overlay completo.
-        
+
         Args:
             display_frame: Frame con overlay (texto, estadísticas, etc.)
             event_type: Tipo de evento ('new_person', 'closed_fist', 'manual')
             person_id: ID de la persona (opcional)
-            
+
         Returns:
             Ruta del archivo guardado
         """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.capture_counter += 1
-        
+
         # Crear nombre de archivo descriptivo
         if person_id:
             filename = f"{event_type}_{person_id}_{timestamp}_{self.capture_counter:03d}.jpg"
         else:
             filename = f"{event_type}_{timestamp}_{self.capture_counter:03d}.jpg"
-        
+
         filepath = os.path.join(self.images_dir, filename)
-        
+
         # Guardar imagen con overlay completo
         cv2.imwrite(filepath, display_frame)
-        
+
         # Imprimir información
         print(f"📸 Captura guardada: {filename}")
-        
+
         return filepath
 
     def record(self, max_frames=None):
         """
         Ejecutar el sistema de detección y grabar video.
-        
+
         Args:
             max_frames: número máximo de frames a grabar (None = ilimitado hasta 'q')
         """
         cap = cv2.VideoCapture(self.input_source)
-        
+
         # Configurar resolución si es cámara
         if isinstance(self.input_source, int):
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.FRAME_WIDTH)
@@ -444,13 +456,8 @@ class VideoRecorder:
         actual_fps = cap.get(cv2.CAP_PROP_FPS) or self.FPS
 
         # Configurar writer de video
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(
-            self.output_path,
-            fourcc,
-            actual_fps,
-            (actual_width, actual_height)
-        )
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        out = cv2.VideoWriter(self.output_path, fourcc, actual_fps, (actual_width, actual_height))
 
         if not out.isOpened():
             print(f"❌ Error: No se pudo crear el archivo de salida: {self.output_path}")
@@ -549,9 +556,7 @@ class VideoRecorder:
                 # Estadísticas en pantalla
                 num_people = len([pid for pid in person_ids if pid is not None])
                 num_hands = (
-                    len(gesture_result.hand_landmarks)
-                    if gesture_result.hand_landmarks
-                    else 0
+                    len(gesture_result.hand_landmarks) if gesture_result.hand_landmarks else 0
                 )
                 num_marked = len(marked_persons)
                 total_known = len(self.reid_system.persons)
@@ -595,7 +600,7 @@ class VideoRecorder:
                     if person_id not in self.last_captured_persons:
                         self.capture_image(display_frame, "new_person", person_id)
                 self.last_captured_persons = current_persons.copy()
-                
+
                 # Capturar gestos Closed_Fist (solo la primera vez que se marca)
                 for person_id in person_ids:
                     if person_id and person_id in marked_persons:
@@ -611,16 +616,18 @@ class VideoRecorder:
 
                 # Verificar tecla de salida
                 key = cv2.waitKey(1) & 0xFF
-                if key == ord('q'):
+                if key == ord("q"):
                     print("\n✋ Grabación detenida por el usuario")
                     break
-                elif key == ord('c'):
+                elif key == ord("c"):
                     # Captura manual
                     self.capture_image(display_frame, "manual")
 
                 # Mostrar progreso cada 30 frames
                 if frame_count % 30 == 0:
-                    print(f"📹 Grabados {frame_count} frames... (Personas: {num_people}, Marcadas: {num_marked})")
+                    print(
+                        f"📹 Grabados {frame_count} frames... (Personas: {num_people}, Marcadas: {num_marked})"
+                    )
 
         except KeyboardInterrupt:
             print("\n✋ Grabación interrumpida por el usuario")
@@ -628,7 +635,7 @@ class VideoRecorder:
             cap.release()
             out.release()
             cv2.destroyAllWindows()
-            
+
             print(f"\n✅ Video guardado exitosamente: {self.output_path}")
             print(f"📊 Total frames grabados: {frame_count}")
             print(f"👥 Total personas identificadas: {len(self.reid_system.persons)}")
@@ -684,9 +691,7 @@ def main():
 
     # Crear y ejecutar el grabador
     recorder = VideoRecorder(
-        pose_model=pose_model,
-        input_source=input_source,
-        output_path=output_path
+        pose_model=pose_model, input_source=input_source, output_path=output_path
     )
     recorder.record(max_frames=max_frames)
 
