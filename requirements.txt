@@ -8,7 +8,8 @@ chromadb
 pillow
 scikit-learn
 
+boxmot
+supervision
+scikit-image
 
-
-
-
+ultralytics

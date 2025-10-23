@@ -9,6 +9,7 @@ from mediapipe.tasks.python import vision
 import numpy as np
 from typing import Dict, List, Optional, Set, Tuple
 import os
+from datetime import datetime
 
 from scripts import ModelDownloader
 from src.core.person_reid import PersonReID
@@ -62,7 +63,7 @@ class VideoRecorder:
 
         # Sistema de Re-Identificación (Re-ID)
         self.reid_system = PersonReID(
-            similarity_threshold=0.75,
+            similarity_threshold=0.85,
             max_absent_frames=300,  # ~10 segundos a 30fps
         )
         
@@ -80,6 +81,15 @@ class VideoRecorder:
 
         # Crear directorio de salida si no existe
         os.makedirs(os.path.dirname(self.output_path) if os.path.dirname(self.output_path) else ".", exist_ok=True)
+        
+        # Crear directorio de imágenes si no existe
+        self.images_dir = "images"
+        os.makedirs(self.images_dir, exist_ok=True)
+        
+        # Contador para capturas automáticas
+        self.capture_counter = 0
+        self.last_captured_persons = set()  # Para detectar nuevas personas
+        self.last_marked_persons = set()  # Para detectar personas marcadas por primera vez
 
     def create_gesture_recognizer(self):
         """Crear el reconocedor de gestos"""
@@ -378,6 +388,37 @@ class VideoRecorder:
 
         return annotated_frame
 
+    def capture_image(self, display_frame: np.ndarray, event_type: str, person_id: str = None) -> str:
+        """
+        Capturar imagen en momento clave con overlay completo.
+        
+        Args:
+            display_frame: Frame con overlay (texto, estadísticas, etc.)
+            event_type: Tipo de evento ('new_person', 'closed_fist', 'manual')
+            person_id: ID de la persona (opcional)
+            
+        Returns:
+            Ruta del archivo guardado
+        """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.capture_counter += 1
+        
+        # Crear nombre de archivo descriptivo
+        if person_id:
+            filename = f"{event_type}_{person_id}_{timestamp}_{self.capture_counter:03d}.jpg"
+        else:
+            filename = f"{event_type}_{timestamp}_{self.capture_counter:03d}.jpg"
+        
+        filepath = os.path.join(self.images_dir, filename)
+        
+        # Guardar imagen con overlay completo
+        cv2.imwrite(filepath, display_frame)
+        
+        # Imprimir información
+        print(f"📸 Captura guardada: {filename}")
+        
+        return filepath
+
     def record(self, max_frames=None):
         """
         Ejecutar el sistema de detección y grabar video.
@@ -426,6 +467,8 @@ class VideoRecorder:
         print("   - Closed_Fist marca persona permanentemente (rojo)")
         print("   - Re-ID mantiene identidad al salir/entrar del frame")
         print("   - Presiona 'q' para detener y guardar")
+        print("   - Presiona 'c' para captura manual")
+        print("   - Capturas automáticas: nueva persona, Closed_Fist")
         if max_frames:
             print(f"   - Máximo {max_frames} frames")
 
@@ -453,6 +496,7 @@ class VideoRecorder:
                 # Re-identificar personas
                 person_ids: List[Optional[str]] = []
                 self.frame_idx_to_person_id.clear()
+                current_persons = set()
 
                 for idx, data in enumerate(pose_data):
                     if data is None:
@@ -460,13 +504,17 @@ class VideoRecorder:
                         continue
 
                     raw_bbox, crop = data
-                    person_id = self.reid_system.identify_person(crop, raw_bbox)
+                    person_id = self.reid_system.find_or_create_person(frame, raw_bbox)
                     person_ids.append(person_id)
                     self.frame_idx_to_person_id[idx] = person_id
+                    current_persons.add(person_id)
 
                     # Aplicar suavizado con ID persistente
                     smoothed_bbox = self.smooth_bbox(person_id, raw_bbox)
                     self.previous_bboxes[person_id] = smoothed_bbox
+
+                # Detectar nuevas personas (capturaremos después de crear display_frame)
+                new_persons = current_persons - self.last_captured_persons
 
                 # Detectar colisiones Closed_Fist y marcar personas
                 hand_bboxes = self.get_hand_bounding_boxes(gesture_result, frame.shape)
@@ -482,14 +530,15 @@ class VideoRecorder:
                     # Verificar colisión con algún Closed_Fist
                     for hand_bbox in hand_bboxes:
                         if self.rectangles_intersect(person_bbox, hand_bbox):
+                            # Marcar persona (capturaremos después de crear display_frame)
                             self.reid_system.mark_person(person_id)
                             break
 
-                # Actualizar frame counter en Re-ID
-                self.reid_system.update_frame_counter()
+                # Actualizar personas ausentes en Re-ID
+                self.reid_system.update_absent_persons()
 
                 # Obtener personas marcadas
-                marked_persons = self.reid_system.get_marked_persons()
+                marked_persons = self.reid_system.marked_ids
 
                 # Dibujar detecciones
                 display_frame = self.draw_pose_landmarks(
@@ -505,7 +554,7 @@ class VideoRecorder:
                     else 0
                 )
                 num_marked = len(marked_persons)
-                total_known = len(self.reid_system.get_all_person_ids())
+                total_known = len(self.reid_system.persons)
 
                 y_offset = 30
                 cv2.putText(
@@ -532,13 +581,27 @@ class VideoRecorder:
                 y_offset += 25
                 cv2.putText(
                     display_frame,
-                    "REC | [Q]uit",
+                    f"REC | Capturas: {self.capture_counter} | [Q]uit | [C]apture",
                     (10, y_offset),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.5,
                     (0, 0, 255),
                     2,
                 )
+
+                # Capturas automáticas después de crear display_frame completo
+                # Capturar nuevas personas
+                for person_id in new_persons:
+                    if person_id not in self.last_captured_persons:
+                        self.capture_image(display_frame, "new_person", person_id)
+                self.last_captured_persons = current_persons.copy()
+                
+                # Capturar gestos Closed_Fist (solo la primera vez que se marca)
+                for person_id in person_ids:
+                    if person_id and person_id in marked_persons:
+                        if person_id not in self.last_marked_persons:
+                            self.capture_image(display_frame, "closed_fist", person_id)
+                            self.last_marked_persons.add(person_id)
 
                 # Escribir frame al video
                 out.write(display_frame)
@@ -551,6 +614,9 @@ class VideoRecorder:
                 if key == ord('q'):
                     print("\n✋ Grabación detenida por el usuario")
                     break
+                elif key == ord('c'):
+                    # Captura manual
+                    self.capture_image(display_frame, "manual")
 
                 # Mostrar progreso cada 30 frames
                 if frame_count % 30 == 0:
@@ -565,8 +631,10 @@ class VideoRecorder:
             
             print(f"\n✅ Video guardado exitosamente: {self.output_path}")
             print(f"📊 Total frames grabados: {frame_count}")
-            print(f"👥 Total personas identificadas: {len(self.reid_system.get_all_person_ids())}")
+            print(f"👥 Total personas identificadas: {len(self.reid_system.persons)}")
             print(f"🔴 Total personas marcadas: {len(marked_persons)}")
+            print(f"📸 Total capturas guardadas: {self.capture_counter}")
+            print(f"📁 Capturas guardadas en: {self.images_dir}/")
 
 
 def main():
