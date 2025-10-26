@@ -3,7 +3,10 @@ opencv-python
 mediapipe
 numpy
 
-# Re-ID and vector database
+--index-url https://download.pytorch.org/whl/rocm6.4
+torch
+torchvision
+
 chromadb
 pillow
 scikit-learn

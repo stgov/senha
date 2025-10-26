@@ -1,74 +1,83 @@
-import mediapipe as mp
+import cv2
 import numpy as np
-
-BaseOptions = mp.tasks.BaseOptions
-GestureRecognizer = mp.tasks.vision.GestureRecognizer
-GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
-VisionRunningMode = mp.tasks.vision.RunningMode
+import mediapipe as mp
+from mediapipe.tasks import python  # <-- AÑADIDO: Importar el módulo 'python'
+from mediapipe.tasks.python import vision
+# (Línea eliminada)
 
 class MediaPipeProcessor:
-    """
-    Ejecuta GestureRecognizer en modo síncrono (IMAGE) sobre un ROI dado.
-    (Se eliminó PoseLandmarker para optimización).
-    """
-    
-    def __init__(self, gesture_model_path: str):
-        
-        print("Loading MediaPipe Gesture model...")
-        gesture_options = GestureRecognizerOptions(
-            base_options=BaseOptions(model_asset_path=gesture_model_path),
-            running_mode=VisionRunningMode.IMAGE,
-            num_hands=2 # Buscará hasta 2 manos dentro del ROI de la persona
-        )
-        self.gesture_recognizer = GestureRecognizer.create_from_options(gesture_options)
-        print("MediaPipe Gesture model loaded.")
-
-    def process(self, roi_rgb: np.ndarray) -> dict:
+    def __init__(self, model_path: str, device: str = 'cpu'):
         """
-        Procesa un solo ROI para gestos.
-
+        Inicializa el procesador de gestos de MediaPipe.
+        
         Args:
-            roi_rgb: El ROI de la persona en formato RGB.
-
-        Returns:
-            Un diccionario con resultados:
-            {
-                "hand_landmarks": (landmarks | None),
-                "gesture_name": (str | None)
-            }
+            model_path (str): Ruta al modelo .task de gestos.
+            device (str): 'cuda' o 'cpu'.
         """
-        if roi_rgb.size == 0:
-            return {}
-
-        # MediaPipe requiere un array C-contiguo.
-        # np.ascontiguousarray() crea una copia con el formato de memoria correcto.
-        try:
-            roi_rgb_contiguous = np.ascontiguousarray(roi_rgb, dtype=np.uint8)
-        except ValueError:
-             # Si el ROI está corrupto o vacío
-            return {}
-
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=roi_rgb_contiguous)
+        print(f"[MediaPipe] Cargando modelo de gestos: {model_path}")
         
-        results = {
-            "hand_landmarks": None,
-            "gesture_name": None
-        }
-
-        # Detección de Gestos
-        try:
-            gesture_result = self.gesture_recognizer.recognize(mp_image)
-            
-            if gesture_result.gestures and gesture_result.hand_landmarks:
-                # Devuelve el gesto con mayor score (de la primera mano detectada)
-                top_gesture = gesture_result.gestures[0][0]
-                results["gesture_name"] = top_gesture.category_name
-                # Devuelve todos los landmarks de manos detectados
-                results["hand_landmarks"] = gesture_result.hand_landmarks
+        # Configurar delegados de GPU si se usa 'cuda'
+        delegate = None
+        if device == 'cuda':
+            try:
+                # La línea que usaba gpu_options_lib se ha eliminado,
+                # ya que no es necesaria para habilitar el delegado.
                 
-        except Exception as e:
-            # print(f"Error en Gesture recognition: {e}")
-            pass # Ignorar si no detecta manos
+                # --- CORRECCIÓN 1 ---
+                # Usar la nueva importación
+                delegate = python.BaseOptions.Delegate.GPU
+                print("[MediaPipe] Delegado de GPU (CUDA) habilitado.")
+            except Exception as e:
+                print(f"[WARN] No se pudo inicializar el delegado de GPU de MediaPipe: {e}")
+                print("[WARN] MediaPipe funcionará en CPU.")
+                delegate = None
 
-        return results
+        # Opciones base con el modelo y el delegado
+        # --- CORRECCIÓN 2 ---
+        # Usar la nueva importación
+        base_options = python.BaseOptions(
+            model_asset_path=model_path,
+            delegate=delegate
+        )
+        
+        options = vision.GestureRecognizerOptions(
+            base_options=base_options,
+            running_mode=vision.RunningMode.IMAGE, # Modo síncrono
+            num_hands=2
+        )
+        
+        try:
+            self.recognizer = vision.GestureRecognizer.create_from_options(options)
+            print("[MediaPipe] Reconocefor de gestos cargado.")
+        except Exception as e:
+            print(f"[ERROR] No se pudo cargar el modelo de gestos de MediaPipe: {e}")
+            print("Asegúrate de que el archivo del modelo existe y es válido.")
+            raise e
+
+    def process(self, roi_rgb: np.ndarray) -> vision.GestureRecognizerResult:
+        """
+        Procesa un ROI (en RGB) para detectar gestos.
+        
+        Args:
+            roi_rgb: La imagen del ROI en formato RGB.
+            
+        Returns:
+            El objeto GestureRecognizerResult crudo de MediaPipe.
+        """
+        try:
+            # Asegurarse de que el array sea contiguo en memoria
+            if not roi_rgb.flags['C_CONTIGUOUS']:
+                roi_rgb = np.ascontiguousarray(roi_rgb, dtype=np.uint8)
+
+            # Crear imagen de MediaPipe
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=roi_rgb)
+            
+            # Reconocer gestos
+            gesture_result = self.recognizer.recognize(mp_image)
+            return gesture_result
+            
+        except Exception as e:
+            # print(f"[Error MP Process]: {e}")
+            # Devolver un resultado vacío en caso de error (ej. ROI muy pequeño)
+            return vision.GestureRecognizerResult(gestures=[], hand_landmarks=[], handedness=[], hand_world_landmarks=[])
 

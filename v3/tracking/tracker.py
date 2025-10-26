@@ -1,59 +1,62 @@
-from ultralytics import YOLO
+import cv2
 import numpy as np
+from ultralytics import YOLO
 import supervision as sv
+import torch
 
 class PersonTracker:
-    """
-    Combina YOLOv8 para detección y ByteTrack para tracking.
-    
-    Se enfoca solo en la clase 'persona' (clase 0 en COCO).
-    """
-    def __init__(self, model_path='yolov8n.pt'):
-        print(f"Loading YOLO model from {model_path}...")
-        self.model = YOLO(model_path)
-        print("YOLO model loaded.")
-        
-        # Inicializar ByteTrack
-        # NOTA: Se eliminó 'track_thresh=0.25' para compatibilidad
-        # con versiones de 'supervision' que no aceptan ese argumento.
-        self.tracker = sv.ByteTrack(
-            frame_rate=30 # Ajusta si tu video es más lento/rápido
-        )
-        # Clase de COCO para 'persona' es 0
-        self.target_class_id = 0
-
-    def update(self, frame_rgb: np.ndarray) -> np.ndarray:
+    def __init__(self, device='cpu'):
         """
-        Detecta y trackea personas en un frame.
-
+        Inicializa el detector YOLO y el tracker ByteTrack.
+        
         Args:
-            frame_rgb: El frame de video en formato RGB.
-
-        Returns:
-            Un array de numpy con [x1, y1, x2, y2, tracker_id] para cada persona.
+            device (str): 'cuda' o 'cpu'.
         """
-        # 1. Detección con YOLO
-        # verbose=False para silenciar logs
-        results = self.model(frame_rgb, classes=[self.target_class_id], verbose=False)
+        self.device = device
+        self.model = YOLO("yolov8n.pt").to(device)
+        self.reset() # Inicializar el tracker
+
+    def reset(self):
+        """Resetea el tracker a su estado inicial."""
+        print("[Tracker] Reseteando tracker...")
+        # frame_rate=30 es un valor común, ajustar si el video es muy lento/rápido
+        self.tracker = sv.ByteTrack(frame_rate=30)
+
+    def track(self, frame_rgb: np.ndarray) -> list[tuple[int, list]]:
+        """
+        Realiza la detección y el tracking en un frame.
         
-        # 2. Convertir a formato Supervision Detections
-        # results[0].boxes.cpu().numpy() contiene todos los datos
-        detections = sv.Detections.from_ultralytics(results[0])
-
-        # 3. Actualizar el Tracker
-        # El tracker (ByteTrack) maneja la lógica de movimiento y asigna IDs
+        Args:
+            frame_rgb: El frame en formato RGB.
+            
+        Returns:
+            Una lista de tuplas (tracker_id, [x1, y1, x2, y2])
+        """
+        results = self.model.track(
+            source=frame_rgb,
+            persist=True,
+            classes=[0], # Clase 0 es 'person' en COCO
+            device=self.device,
+            verbose=False,
+            tracker="bytetrack.yaml"
+        )[0]
+        
+        # Convertir resultados a supervision.Detections
+        detections = sv.Detections.from_ultralytics(results)
+        
+        # Actualizar el tracker
         tracked_detections = self.tracker.update_with_detections(detections)
-
-        # 4. Formatear salida
-        # Queremos [x1, y1, x2, y2, tracker_id]
+        
         output = []
         for det in tracked_detections:
             # det es (xyxy, mask, confidence, class_id, tracker_id)
-            xyxy = det[0]
+            xyxy = det[0].astype(int)
             tracker_id = det[4]
             
-            if tracker_id is not None:
-                output.append([xyxy[0], xyxy[1], xyxy[2], xyxy[3], tracker_id])
-
-        return np.array(output)
+            if tracker_id is None:
+                continue
+                
+            output.append((int(tracker_id), [xyxy[0], xyxy[1], xyxy[2], xyxy[3]]))
+            
+        return output
 

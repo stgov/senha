@@ -1,219 +1,191 @@
-import cv2
-import numpy as np
 import chromadb
-from chromadb.config import Settings
-from typing import Dict, Tuple, Optional
-
-# Importar la función con el nombre correcto
-from reid.embedding_utils import extract_embedding, EMBEDDING_DIM
-
-# Configuración del Filtro de Kalman para Embeddings
-KALMAN_PROCESS_NOISE = 1e-4  # Qué tan rápido puede cambiar la apariencia
-KALMAN_MEASUREMENT_NOISE = 1e-3 # Confianza en la observación actual
+import numpy as np
+import cv2
+from typing import Dict, Tuple, Optional, Set
+from .embedding_utils import extract_embedding
 
 class PersonReID:
-    """
-    Gestiona la Re-Identificación (ReID) de personas.
-    
-    - Asigna IDs permanentes (person_id) a IDs temporales (tracker_id).
-    - Utiliza ChromaDB para búsqueda de similitud de apariencia.
-    - Aplica un Filtro de Kalman al *embedding* para una firma de apariencia
-      más robusta y estable en el tiempo.
-    """
-    
-    def __init__(
-        self,
-        db_path: Optional[str] = None,
-        similarity_threshold: float = 0.55,
-        max_absent_frames: int = 150
-    ):
-        """
-        Inicializa el sistema ReID.
-
-        Args:
-            db_path (Optional[str]): Ruta para ChromaDB persistente. 
-                                     Si es None, se usa en memoria.
-            similarity_threshold (float): Umbral de similitud (1.0 - distancia coseno)
-                                          para considerar a dos personas como la misma.
-            max_absent_frames (int): Nº de frames antes de olvidar a una persona.
-        """
+    def __init__(self, similarity_threshold: float = 0.5, max_absent_frames: int = 60, kalman_process_noise: float = 1e-4, kalman_measurement_noise: float = 1e-2):
         self.similarity_threshold = similarity_threshold
         self.max_absent_frames = max_absent_frames
+        self.kalman_process_noise = kalman_process_noise
+        self.kalman_measurement_noise = kalman_measurement_noise
         
-        if db_path:
-            self.client = chromadb.PersistentClient(path=db_path, settings=Settings(anonymized_telemetry=False))
-        else:
-            print("Iniciando ChromaDB en modo in-memoria.")
-            self.client = chromadb.Client(Settings(anonymized_telemetry=False))
-            
-        # Usamos distancia Coseno (L2 normalizado)
-        self.collection = self.client.get_or_create_collection(
-            name="person_embeddings",
-            metadata={"hnsw:space": "cosine"}
-        )
+        # ChromaDB en memoria
+        self.client = chromadb.Client()
+        self.collection = self.client.create_collection(name="person_embeddings", metadata={"hnsw:space": "cosine"})
         
-        # --- Almacenes de Estado ---
-        # Mapeo: tracker_id (temporal) -> person_id (permanente)
-        self.tracker_to_person: Dict[int, str] = {}
-        # Mapeo: person_id -> Filtro de Kalman para su embedding
-        self.kalman_filters: Dict[str, cv2.KalmanFilter] = {}
-        # Mapeo: person_id -> Nº de frames ausente
-        self.frames_absent: Dict[str, int] = {}
+        # Dimensiones del embedding (debe coincidir con embedding_utils.py)
+        self.embedding_dim = 320 # 96 (HSV) + 192 (HOG) + 32 (Grad)
         
+        # Estado interno
+        self.persons: Dict[str, Dict] = {} # person_id -> { "kalman": cv2.KalmanFilter, "stable_embedding": np.ndarray, "last_seen_tracker": int, "frames_absent": int }
+        self.tracker_to_person_map: Dict[int, str] = {} # tracker_id -> person_id
+        self.marked_ids: Set[str] = set()
         self.next_person_id = 1
 
-    def _init_kalman_filter(self) -> cv2.KalmanFilter:
+    def _init_kalman(self, initial_embedding: np.ndarray) -> cv2.KalmanFilter:
         """Inicializa un Filtro de Kalman para un vector de embedding."""
-        kalman = cv2.KalmanFilter(EMBEDDING_DIM * 2, EMBEDDING_DIM)
-        # Matriz de transición (Estado = [embedding, delta_embedding])
-        kalman.transitionMatrix = np.eye(EMBEDDING_DIM * 2, dtype=np.float32)
-        kalman.transitionMatrix[0:EMBEDDING_DIM, EMBEDDING_DIM:] = np.eye(EMBEDDING_DIM, dtype=np.float32)
-        
-        # Matriz de medición (Solo medimos el embedding)
-        kalman.measurementMatrix = np.zeros((EMBEDDING_DIM, EMBEDDING_DIM * 2), dtype=np.float32)
-        kalman.measurementMatrix[0:EMBEDDING_DIM, 0:EMBEDDING_DIM] = np.eye(EMBEDDING_DIM, dtype=np.float32)
-        
-        # Ruidos
-        kalman.processNoiseCov = np.eye(EMBEDDING_DIM * 2, dtype=np.float32) * KALMAN_PROCESS_NOISE
-        kalman.measurementNoiseCov = np.eye(EMBEDDING_DIM, dtype=np.float32) * KALMAN_MEASUREMENT_NOISE
-        
+        kalman = cv2.KalmanFilter(self.embedding_dim, self.embedding_dim)
+        kalman.transitionMatrix = np.eye(self.embedding_dim, dtype=np.float32)
+        kalman.measurementMatrix = np.eye(self.embedding_dim, dtype=np.float32)
+        kalman.processNoiseCov = np.eye(self.embedding_dim, dtype=np.float32) * self.kalman_process_noise
+        kalman.measurementNoiseCov = np.eye(self.embedding_dim, dtype=np.float32) * self.kalman_measurement_noise
+        kalman.statePost = initial_embedding.reshape(-1, 1).astype(np.float32)
+        kalman.errorCovPost = np.eye(self.embedding_dim, dtype=np.float32) * 0.1
         return kalman
 
-    def _update_kalman_embedding(self, kalman: cv2.KalmanFilter, embedding: np.ndarray) -> np.ndarray:
-        """Predice y corrige el Kalman con un nuevo embedding."""
+    def _update_kalman_embedding(self, kalman: cv2.KalmanFilter, new_embedding: np.ndarray) -> np.ndarray:
+        """Actualiza el Kalman con un nuevo embedding y devuelve el estado filtrado."""
         predicted = kalman.predict().flatten()
-        
-        # Corregir con la nueva medición
-        measurement = embedding.astype(np.float32).reshape(-1, 1)
+        measurement = new_embedding.astype(np.float32).reshape(-1, 1)
         kalman.correct(measurement)
+        stable_embedding = kalman.statePost.flatten()
         
-        # El estado filtrado es la primera mitad del vector de estado
-        stable_embedding = kalman.statePost[0:EMBEDDING_DIM].flatten()
-        
-        # Re-normalizar (importante para coseno)
+        # Re-normalizar para similitud coseno
         norm = np.linalg.norm(stable_embedding)
         if norm > 0:
             stable_embedding /= norm
-            
         return stable_embedding
 
+    def _create_person(self, initial_embedding: np.ndarray, tracker_id: int) -> str:
+        """Registra una nueva persona en el sistema."""
+        person_id = f"P{self.next_person_id:03d}"
+        self.next_person_id += 1
+        
+        kalman = self._init_kalman(initial_embedding)
+        
+        self.persons[person_id] = {
+            "kalman": kalman,
+            "stable_embedding": initial_embedding,
+            "last_seen_tracker": tracker_id,
+            "frames_absent": 0
+        }
+        
+        self.collection.add(embeddings=[initial_embedding.tolist()], ids=[person_id])
+        self.tracker_to_person_map[tracker_id] = person_id
+        
+        return person_id, True # (person_id, is_new)
+
     def identify_person(self, frame_rgb: np.ndarray, bbox: Tuple[int, int, int, int], tracker_id: int) -> Tuple[str, bool]:
-        """
-        Identifica a una persona, la rastrea y actualiza su embedding estable.
-        """
-        is_new_person = False
-        
-        # --- 1. Extraer embedding del frame actual ---
-        
-        # --- CORRECCIÓN DEL ERROR ---
-        # Recortar el ROI del frame completo
+        """Identifica o crea una persona basada en su apariencia y tracking."""
         x1, y1, x2, y2 = bbox
-        if x1 >= x2 or y1 >= y2: # Salvaguarda
-            return "unknown", False
-            
         roi = frame_rgb[y1:y2, x1:x2]
         
-        # Llamar con un solo argumento (el ROI)
-        current_embedding = extract_embedding(roi)
-        # ---------------------------
+        # Validar ROI
+        if roi.size == 0:
+            # Si el ROI es inválido, re-usar el ID del tracker si existe
+            if tracker_id in self.tracker_to_person_map:
+                return self.tracker_to_person_map[tracker_id], False
+            else:
+                # Caso raro: ROI inválido y tracker nuevo. No podemos hacer nada.
+                return "P_INVALID", False
 
-        # --- 2. Verificar si ya conocemos este tracker_id ---
-        if tracker_id in self.tracker_to_person:
-            person_id = self.tracker_to_person[tracker_id]
-            self.frames_absent[person_id] = 0 # Marcar como presente
+        current_embedding = extract_embedding(roi)
+        
+        # --- Caso 1: El Tracker ya es conocido ---
+        if tracker_id in self.tracker_to_person_map:
+            person_id = self.tracker_to_person_map[tracker_id]
             
-            # Actualizar embedding con Kalman
-            kalman = self.kalman_filters[person_id]
+            # Actualizar estado
+            record = self.persons[person_id]
+            record["frames_absent"] = 0
+            record["last_seen_tracker"] = tracker_id
+            
+            # Actualizar Kalman y embedding estable
+            kalman = record["kalman"]
             stable_embedding = self._update_kalman_embedding(kalman, current_embedding)
+            record["stable_embedding"] = stable_embedding
             
             # Actualizar en ChromaDB
             self.collection.update(ids=[person_id], embeddings=[stable_embedding.tolist()])
-            return person_id, False # No es nuevo
-
-        # --- 3. Buscar por similitud de apariencia (ReID) ---
+            
+            return person_id, False # (person_id, is_new)
+            
+        # --- Caso 2: Tracker nuevo, buscar por apariencia (Re-ID) ---
         if self.collection.count() > 0:
-            results = self.collection.query(
-                query_embeddings=[current_embedding.tolist()],
-                n_results=1
-            )
-            
-            if results['ids'] and results['distances']:
-                best_match_id = results['ids'][0][0]
-                best_match_distance = results['distances'][0][0]
-                similarity = 1.0 - best_match_distance # Distancia Coseno -> Similitud
+            try:
+                results = self.collection.query(
+                    query_embeddings=[current_embedding.tolist()],
+                    n_results=1
+                )
                 
-                if similarity >= self.similarity_threshold:
-                    # ¡Re-identificado!
-                    person_id = best_match_id
-                    print(f"Re-identificado: Tracker {tracker_id} es {person_id} (Sim: {similarity:.2f})")
-                    self.tracker_to_person[tracker_id] = person_id
-                    self.frames_absent[person_id] = 0 # Marcar como presente
+                # Asegurarse de que results['ids'][0] no esté vacío
+                if results['ids'] and results['ids'][0]:
+                    best_match_id = results['ids'][0][0]
+                    best_match_distance = results['distances'][0][0]
+                    similarity = 1.0 - best_match_distance
                     
-                    # Actualizar Kalman
-                    kalman = self.kalman_filters[person_id]
-                    stable_embedding = self._update_kalman_embedding(kalman, current_embedding)
-                    self.collection.update(ids=[person_id], embeddings=[stable_embedding.tolist()])
-                    return person_id, False # No es nuevo
+                    if similarity >= self.similarity_threshold:
+                        # ¡Re-identificación exitosa!
+                        person_id = best_match_id
+                        self.tracker_to_person_map[tracker_id] = person_id
+                        
+                        record = self.persons[person_id]
+                        record["frames_absent"] = 0
+                        record["last_seen_tracker"] = tracker_id
+                        
+                        # Actualizar Kalman
+                        kalman = record["kalman"]
+                        stable_embedding = self._update_kalman_embedding(kalman, current_embedding)
+                        record["stable_embedding"] = stable_embedding
+                        self.collection.update(ids=[person_id], embeddings=[stable_embedding.tolist()])
+                        
+                        return person_id, False # (person_id, is_new)
+                        
+            except Exception as e:
+                print(f"[Error ReID Query]: {e}")
+                pass # Continuar para crear nueva persona
 
-        # --- 4. Nueva persona detectada ---
-        is_new_person = True
-        person_id = f"P{self.next_person_id:03d}"
-        self.next_person_id += 1
-        print(f"Nueva persona detectada: {person_id} (asignada a tracker {tracker_id})")
+        # --- Caso 3: Tracker nuevo, sin match de apariencia -> Persona Nueva ---
+        return self._create_person(current_embedding, tracker_id)
 
-        # Inicializar su Filtro de Kalman
-        kalman = self._init_kalman_filter()
-        # Inicializar estado del Kalman
-        kalman.statePost[0:EMBEDDING_DIM] = current_embedding.reshape(-1, 1)
-        self.kalman_filters[person_id] = kalman
+    def cleanup_absent_persons(self, active_tracker_ids: Set[int]):
+        """Limpia personas que han estado ausentes por mucho tiempo."""
+        absent_person_ids = []
         
-        # Añadir a estados
-        self.tracker_to_person[tracker_id] = person_id
-        self.frames_absent[person_id] = 0
-        
-        # Añadir a ChromaDB (usamos el primer embedding como inicial)
-        self.collection.add(
-            ids=[person_id],
-            embeddings=[current_embedding.tolist()]
-        )
-        
-        return person_id, is_new_person
-
-    def update_absent(self, active_tracker_ids: set):
-        """Maneja la lógica de personas que salen del frame."""
-        
-        current_persons = set(self.tracker_to_person.values())
-        active_persons = set(self.tracker_to_person[tid] for tid in active_tracker_ids)
-        
-        absent_persons = current_persons - active_persons
-        
-        for person_id in absent_persons:
-            self.frames_absent[person_id] += 1
-            
-        # Limpiar trackers antiguos
-        inactive_tracker_ids = set(self.tracker_to_person.keys()) - active_tracker_ids
-        for tracker_id in inactive_tracker_ids:
-            person_id = self.tracker_to_person[tracker_id]
-            if self.frames_absent.get(person_id, 0) > self.max_absent_frames:
-                # Olvidar a esta persona
-                print(f"Olvidando a {person_id} (ausente por {self.frames_absent[person_id]} frames)")
-                if person_id in self.kalman_filters:
-                    del self.kalman_filters[person_id]
-                if person_id in self.frames_absent:
-                    del self.frames_absent[person_id]
-                self.collection.delete(ids=[person_id])
+        # Incrementar ausencia de personas no activas
+        for person_id, record in self.persons.items():
+            if record["last_seen_tracker"] not in active_tracker_ids:
+                record["frames_absent"] += 1
                 
-            # Siempre eliminar el mapeo del tracker (podría reaparecer)
-            del self.tracker_to_person[tracker_id]
+                # Si la persona está marcada, nunca la borres
+                if person_id in self.marked_ids:
+                    continue
+                    
+                if record["frames_absent"] > self.max_absent_frames:
+                    absent_person_ids.append(person_id)
+
+        # Eliminar personas ausentes
+        if absent_person_ids:
+            for person_id in absent_person_ids:
+                print(f"[INFO] Eliminando persona ausente: {person_id}")
+                del self.persons[person_id]
+                
+            self.collection.delete(ids=absent_person_ids)
+            
+            # Limpiar el mapa de trackers
+            self.tracker_to_person_map = {tid: pid for tid, pid in self.tracker_to_person_map.items() if pid not in absent_person_ids}
+
+    def mark_person(self, person_id: str):
+        """Marca una persona como permanente (ej. por gesto)."""
+        self.marked_ids.add(person_id)
+
+    def reset(self):
+        """Resetea el estado completo del sistema Re-ID."""
+        print("[ReID] Reseteando base de datos y estados...")
+        self.client.delete_collection(name="person_embeddings")
+        self.collection = self.client.create_collection(name="person_embeddings", metadata={"hnsw:space": "cosine"})
+        self.persons.clear()
+        self.tracker_to_person_map.clear()
+        self.marked_ids.clear()
+        self.next_person_id = 1
 
     def shutdown(self):
-        """Limpia la base de datos ChromaDB."""
+        """Limpia la base de datos en memoria (no es necesario para persistente)."""
         try:
-            print("Limpiando colección de ChromaDB...")
-            ids_to_delete = self.collection.get()['ids']
-            if ids_to_delete:
-                self.collection.delete(ids=ids_to_delete)
-            print(f"Se eliminaron {len(ids_to_delete)} entradas.")
+            self.client.delete_collection(name="person_embeddings")
+            print("[ReID] Base de datos en memoria limpiada.")
         except Exception as e:
-            print(f"Error limpiando ChromaDB: {e}")
+            print(f"[Error shutdown ReID]: {e}")
 
