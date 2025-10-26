@@ -210,3 +210,5 @@ PersonReID(
 ## Licencia
 
 MIT
+
+tu_proyecto/ │ ├── main.py                 # El orquestador principal que une todo. │ ├── requirements.txt        # Las dependencias (opencv, mediapipe, ultralytics, etc.) │ ├── anotation/ │   ├── init.py         # (Vacío) Convierte la carpeta en un paquete de Python. │   └── annotator.py         # Dibuja los bounding boxes, IDs y landmarks. │ ├── detection/ │   ├── init.py         # (Vacío) │   └── mediapipe_processor.py # Ejecuta Pose y Gesture sobre los ROIs. │ ├── downloader/ │   ├── init.py         # (Vacío) │   └── model_downloader.py # Descarga los modelos de MediaPipe (.task). │ ├── reid/ │   ├── init.py         # (Vacío) │   ├── person_reid.py      # Lógica de Re-ID (ChromaDB, Kalman de embedding). │   └── embedding_utils.py  # Función para extraer embeddings (HOG/HSV). │ ├── smoothing/ │   ├── init.py         # (Vacío) │   └── box_smoothing.py    # Clase BoundingBoxSmoother (suavizado visual). │ └── tracking/ ├── init.py         # (Vacío) └── tracker.py          # Lógica de Tracking (YOLO + ByteTrack).
