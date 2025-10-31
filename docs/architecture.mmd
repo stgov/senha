@@ -1,0 +1,69 @@
+graph TD
+    subgraph "Cámaras (25 Ubicaciones)"
+        CAM["Cámara HD 1..25"]
+    end
+
+    subgraph "AWS Cloud"
+        KVS["Amazon Kinesis Video Streams"]
+        
+        subgraph "Buffer y Cola de Mensajes"
+            SQS["Amazon SQS <br><i>(Cola de Procesamiento)</i>"]
+            BUFFER["Buffer Temporal de Video <br><i>(KVS Fragmentos - Rolling 10 min)</i>"]
+        end
+        
+        subgraph "Procesamiento y Lógica"
+            L_Trigger["AWS Lambda (Trigger) <br><i>Procesa frames desde SQS</i>"]
+            SME["Amazon SageMaker Endpoint <br><i>(GPU - Multi-Modelo:<br/>Pose, Gestos, Embeddings)</i>"]
+        end
+
+        subgraph "Datos y Almacenamiento"
+            OS["Amazon OpenSearch <br><i>(Base de Datos Vectorial<br/>Búsqueda por Similitud)</i>"]
+            DDB["Amazon DynamoDB <br><i>(Cache de Deduplicación<br/>Alertas por Persona)</i>"]
+            S3_TEMP["Amazon S3 <br><i>(Buffer Temporal - Rolling)</i>"]
+            S3_EVID["Amazon S3 <br><i>(Evidencia Final - 10 min clips)</i>"]
+        end
+
+        subgraph "Sistema de Alerta y Captura"
+            L_Alert["AWS Lambda (Lógica de Alerta) <br><i>Verifica deduplicación</i>"]
+            L_CLIP["AWS Lambda (Gestor de Clips) <br><i>Extrae 5 min pre + 5 min post</i>"]
+            SNS["Amazon SNS (Tópico de Alerta)"]
+            CW["Amazon CloudWatch (Monitoreo 24/7)"]
+        end
+    end
+
+    subgraph "Equipos de Respuesta"
+        R["Policía / ONGs / App de Seguridad"]
+    end
+
+    %% Flujo de Datos Principal
+    CAM -- "Flujo de video 24/7" --> KVS
+    KVS -- "Fragmentos de video" --> SQS
+    KVS -- "Almacenamiento temporal" --> BUFFER
+    KVS -- "Copia a S3 temporal" --> S3_TEMP
+    SQS -- "Mensajes de procesamiento" --> L_Trigger
+    L_Trigger -- "Invoca modelo multi-modelo" --> SME
+    SME -- "Respuesta (JSON: Pose, Gesto, Embedding)" --> L_Trigger
+    
+    %% Flujo de Re-identificación
+    L_Trigger -- "Genera Embedding" --> OS
+    L_Trigger -- "Búsqueda por similitud" --> OS
+    OS -- "Resultado de matching" --> L_Trigger
+    
+    %% Flujo de Alerta con Deduplicación
+    L_Trigger -- "Si Gesto=Closed Fist" --> L_Alert
+    L_Alert -- "Consulta cache deduplicación" --> DDB
+    DDB -- "Verifica alertas recientes (X min)" --> L_Alert
+    L_Alert -- "Si no duplicado: Registra + Trigger" --> L_CLIP
+    L_Alert -- "Si duplicado: Skip" --> CW
+    L_CLIP -- "Lee buffer KVS/S3" --> BUFFER
+    L_CLIP -- "Extrae 10 min (5 pre + 5 post)" --> S3_EVID
+    L_Alert -- "Publica Alerta" --> SNS
+    SNS -- "Notificación (SMS, Email, Push)" --> R
+    
+    %% Monitoreo
+    SME -- "Métricas de performance" --> CW
+    L_Alert -- "Logs de Alertas" --> CW
+    KVS -- "Métricas de Ingesta" --> CW
+    SQS -- "Métricas de cola" --> CW
+    OS -- "Métricas de búsqueda" --> CW
+    DDB -- "Métricas de cache" --> CW
